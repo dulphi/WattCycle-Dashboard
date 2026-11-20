@@ -4,6 +4,18 @@ A live dashboard for **WattCycle LiFePO₄ batteries** (and other packs with the
 
 No cloud account, no phone app, and no `npm install`. It is one HTML page and one Node.js script.
 
+## Screenshots
+
+**On the PC next to the battery** (full controls, here in demo mode with the History panel on *Week*):
+
+![Dashboard on the local PC](docs/screenshots/local.png)
+
+**Remote view through a tunnel** (after entering the password; read-only, so the connection controls and Bluetooth log are hidden, and History is on *Day*):
+
+![Read-only remote view](docs/screenshots/remote.png)
+
+<sub>Screenshots use the built-in demo data and sample history, not a real battery. The page follows your system's light or dark theme.</sub>
+
 ## Features
 
 - **Live readings:** state of charge, pack voltage, cell voltages, temperatures, cycles, health, and MOSFET/protection status.
@@ -180,7 +192,7 @@ Environment variables:
 
 ## History database
 
-- **File:** `history.db` (SQLite) next to `serve.js`. It is created automatically on first run.
+- **File:** `history.db` (SQLite) next to `serve.js`. Whenever the server starts and the file is missing, it is created automatically, empty. Existing data is never overwritten.
 - **What's stored:** one row per 30 minutes. Each row has the average, min and max for voltage, current and SOC; average power; SOC at the end of the half hour; highest temperature; worst cell imbalance (mV); and Ah/Wh charged in and discharged out.
 - **Size:** 48 rows a day, roughly 3 MB a year.
 - **Gaps:** time when the dashboard window wasn't connected is shown as a gap, not guessed.
@@ -229,6 +241,7 @@ Open **Bluetooth log (raw frames)** at the bottom of the dashboard to see every 
 | `tunnel.bat` | Opens a Cloudflare quick tunnel. |
 | `ngrok.bat` | Opens an ngrok tunnel (optionally with a fixed domain). |
 | `config.example.json` | Template for `config.json`. |
+| `docs/screenshots/` | Images used in this README. |
 
 ## Security notes
 
