@@ -1,0 +1,5 @@
+{
+  "remotePassword": "change-me-to-something-long",
+  "autoConnect": true,
+  "interval": 2000
+}

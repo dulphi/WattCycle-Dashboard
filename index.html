@@ -1,0 +1,1248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WattCycle Battery Monitor</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f4f2;
+  --surface-1: #fcfcfb;
+  --border: #e3e2de;
+  --grid: #ecebe7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #77766f;
+  --series-1: #2a78d6;
+  --series-1-soft: rgba(42,120,214,.12);
+  --good: #0ca30c; --good-text: #006300;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --accent: #2a78d6;
+  --accent-text: #ffffff;
+  --charge: #1f9d55; --charge-soft: rgba(31,157,85,.14);
+  --discharge: #e0703a; --discharge-soft: rgba(224,112,58,.14);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111110; --surface-1: #1a1a19; --border: #2e2e2b; --grid: #262624;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --series-1: #3987e5; --series-1-soft: rgba(57,135,229,.16);
+    --good-text: #0ca30c; --accent: #3987e5;
+    --charge: #34c06e; --charge-soft: rgba(52,192,110,.16);
+    --discharge: #f08a52; --discharge-soft: rgba(240,138,82,.16);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111110; --surface-1: #1a1a19; --border: #2e2e2b; --grid: #262624;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+  --series-1: #3987e5; --series-1-soft: rgba(57,135,229,.16);
+  --good-text: #0ca30c; --accent: #3987e5;
+  --charge: #34c06e; --charge-soft: rgba(52,192,110,.16);
+  --discharge: #f08a52; --discharge-soft: rgba(240,138,82,.16);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text-primary);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+.sub { color: var(--text-secondary); font-size: 13px; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button, select {
+  font: inherit; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface-1); color: var(--text-primary); padding: 7px 12px; cursor: pointer;
+}
+button.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; font-weight: 600; }
+button:disabled { opacity: .5; cursor: default; }
+label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--text-secondary); font-size: 13px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-1); font-size: 12px; color: var(--text-secondary); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+.dot.ok { background: var(--good); } .dot.busy { background: var(--warning); } .dot.err { background: var(--critical); }
+
+.grid { display: grid; gap: 12px; }
+.kpis { grid-template-columns: minmax(220px, 1.2fr) repeat(3, minmax(0, 1fr)); }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.card h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; color: var(--text-secondary); }
+.tile .label { font-size: 12px; color: var(--text-secondary); }
+.tile .value { font-size: 26px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.tile .value small { font-size: 14px; font-weight: 500; color: var(--text-secondary); margin-left: 2px; }
+.tile .meta { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.stack { display: grid; gap: 12px; }
+.flow { border-top: 3px solid var(--charge); }
+.flow.out { border-top-color: var(--discharge); }
+.flow .label { display: flex; align-items: center; gap: 6px; }
+.flow .arrow { font-weight: 700; color: var(--charge); }
+.flow.out .arrow { color: var(--discharge); }
+.flow .value2 { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.flow .value2 small { font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-left: 2px; }
+.flow.active { background: var(--charge-soft); }
+.flow.out.active { background: var(--discharge-soft); }
+.flow:not(.active) .value, .flow:not(.active) .value2 { color: var(--text-muted); }
+.hist-head { flex-wrap: wrap; align-items: center; margin-bottom: 4px; }
+.hist-head h2 { margin: 0; }
+.hist-label { min-width: 150px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+.hist-sum { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+.hist-sum .t { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.hist-sum .n { font-size: 12px; color: var(--text-secondary); }
+.hist-sum .v { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.hist-sum .s { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.legend { display: inline-flex; gap: 12px; font-size: 12px; color: var(--text-muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.soc { display: flex; gap: 16px; align-items: center; }
+.soc svg { flex: none; }
+.soc .big { font-size: 40px; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.row2 { grid-template-columns: 2fr 1fr; margin-top: 12px; }
+.row3 { grid-template-columns: 1fr 1fr; margin-top: 12px; }
+.status-list { display: grid; gap: 8px; }
+.status { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.status svg { flex: none; }
+.temps { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.temps .t { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.temps .t .n { font-size: 12px; color: var(--text-secondary); }
+.temps .t .v { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.tip {
+  position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 8px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12);
+  white-space: nowrap; display: none; font-variant-numeric: tabular-nums; z-index: 2;
+}
+.axis text { fill: var(--text-muted); font-size: 11px; }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.chart-head .stat { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tabs { display: inline-flex; gap: 4px; }
+.tabs button { padding: 3px 9px; font-size: 12px; }
+.tabs button[aria-pressed="true"] { background: var(--series-1-soft); border-color: var(--series-1); }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; }
+th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--grid); }
+th { color: var(--text-secondary); font-weight: 600; }
+details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px; }
+#log { font: 12px/1.4 ui-monospace, Consolas, monospace; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-all; color: var(--text-secondary); margin-top: 8px; }
+.notice { background: var(--surface-1); border: 1px solid var(--border); border-left: 4px solid var(--warning); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 13px; display: none; }
+.info { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+.info dt { color: var(--text-secondary); } .info dd { margin: 0; font-variant-numeric: tabular-nums; word-break: break-all; }
+@media (max-width: 900px) {
+  .kpis { grid-template-columns: 1fr 1fr; }
+  .kpis .soc-card { grid-column: 1 / -1; }
+  .row2, .row3 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>WattCycle Battery Monitor</h1>
+      <div class="sub" id="devname">Not connected</div>
+    </div>
+    <div class="controls">
+      <span class="pill" id="connpill"><span class="dot" id="conndot"></span><span id="conntext">Idle</span></span>
+      <label class="chk" title="List every Bluetooth device instead of only names that look like WattCycle packs"><input type="checkbox" id="allDevices"> Show all devices</label>
+      <label class="chk" title="Reconnect to the last battery automatically when the dashboard starts"><input type="checkbox" id="autoConnect" checked> Auto-connect</label>
+      <select id="interval" title="Polling interval">
+        <option value="1000">1 s</option><option value="2000" selected>2 s</option><option value="5000">5 s</option><option value="10000">10 s</option>
+      </select>
+      <button class="primary" id="btnConnect">Connect battery</button>
+      <button id="btnDemo">Demo data</button>
+      <button id="btnCsv" disabled>Export CSV</button>
+      <button id="btnResetTotals" title="Reset the charged-in / discharged-out totals">Reset totals</button>
+    </div>
+  </header>
+
+  <div class="notice" id="notice"></div>
+
+  <section class="grid kpis">
+    <div class="card soc-card">
+      <h2>State of charge</h2>
+      <div class="soc">
+        <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">
+          <circle cx="48" cy="48" r="40" fill="none" stroke="var(--grid)" stroke-width="10"/>
+          <circle id="socArc" cx="48" cy="48" r="40" fill="none" stroke="var(--series-1)" stroke-width="10"
+                  stroke-linecap="round" stroke-dasharray="0 252" transform="rotate(-90 48 48)"/>
+        </svg>
+        <div>
+          <div class="big" id="soc">--<small style="font-size:18px">%</small></div>
+          <div class="tile meta" id="socMeta">-- / -- Ah</div>
+          <div class="tile meta" id="eta">&nbsp;</div>
+        </div>
+      </div>
+    </div>
+    <div class="card tile"><div class="label">Pack voltage</div><div class="value" id="volt">--<small>V</small></div><div class="meta" id="voltMeta">&nbsp;</div></div>
+    <div class="card tile flow in" id="flowIn">
+      <div class="label"><span class="arrow">▼</span>Charging · into battery</div>
+      <div class="value" id="inA">--<small>A</small></div>
+      <div class="value2" id="inW">--<small>W</small></div>
+      <div class="meta" id="inTot">&nbsp;</div>
+    </div>
+    <div class="card tile flow out" id="flowOut">
+      <div class="label"><span class="arrow">▲</span>Discharging · out of battery</div>
+      <div class="value" id="outA">--<small>A</small></div>
+      <div class="value2" id="outW">--<small>W</small></div>
+      <div class="meta" id="outTot">&nbsp;</div>
+    </div>
+  </section>
+
+  <section class="grid row2">
+    <div class="card">
+      <div class="chart-head">
+        <h2 id="trendTitle">Current (A)</h2>
+        <div class="tabs" role="group" aria-label="Trend metric" id="trendTabs">
+          <button data-m="current" aria-pressed="true">Current</button>
+          <button data-m="voltage" aria-pressed="false">Voltage</button>
+          <button data-m="power" aria-pressed="false">Power</button>
+          <button data-m="soc" aria-pressed="false">SOC</button>
+        </div>
+      </div>
+      <div class="chart" id="trendChart"></div>
+      <div class="chart-head">
+        <span class="legend" id="trendLegend"><span><i style="background:var(--charge)"></i>Charging (above 0)</span><span><i style="background:var(--discharge)"></i>Discharging (below 0)</span></span>
+        <span class="stat" id="trendStat"></span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Health &amp; protection</h2>
+      <div class="status-list" id="statusList"></div>
+      <div style="height:12px"></div>
+      <dl class="info">
+        <dt>Cycles</dt><dd id="cycles">--</dd>
+        <dt>Health</dt><dd id="soh">--</dd>
+        <dt>Design capacity</dt><dd id="design">--</dd>
+        <dt>Firmware</dt><dd id="fw">--</dd>
+        <dt>Manufacturer</dt><dd id="mfr">--</dd>
+        <dt>Serial</dt><dd id="serial">--</dd>
+        <dt>Last update</dt><dd id="updated">--</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section class="grid row3">
+    <div class="card">
+      <div class="chart-head">
+        <h2>Cell voltages (V)</h2>
+        <span class="stat" id="cellStat"></span>
+      </div>
+      <div class="chart" id="cellChart"></div>
+      <details style="margin-top:8px"><summary>Table view</summary><table id="cellTable"></table></details>
+    </div>
+    <div class="card">
+      <h2>Temperatures (°C)</h2>
+      <div class="temps" id="temps"><div class="sub">No data yet</div></div>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:12px" id="histCard">
+    <div class="chart-head hist-head">
+      <h2>History <span class="stat">· saved every 30 min</span></h2>
+      <div class="controls">
+        <div class="tabs" role="group" aria-label="History range" id="histRange">
+          <button data-r="day" aria-pressed="true">Day</button>
+          <button data-r="week" aria-pressed="false">Week</button>
+          <button data-r="month" aria-pressed="false">Month</button>
+        </div>
+        <button id="histPrev" aria-label="Previous period">‹</button>
+        <span class="hist-label" id="histLabel">--</span>
+        <button id="histNext" aria-label="Next period">›</button>
+        <button id="histToday">Today</button>
+        <button id="histCsv" disabled>Export CSV</button>
+      </div>
+    </div>
+    <div class="hist-sum" id="histSum"></div>
+    <div class="grid row3">
+      <div>
+        <div class="chart-head"><h2 id="histEnergyTitle">Energy in / out (Wh)</h2></div>
+        <div class="chart" id="histEnergy"></div>
+        <div class="chart-head"><span class="legend"><span><i style="background:var(--charge)"></i>Charged in</span><span><i style="background:var(--discharge)"></i>Discharged out</span></span></div>
+      </div>
+      <div>
+        <div class="chart-head">
+          <h2 id="histLineTitle">State of charge (%)</h2>
+          <div class="tabs" role="group" aria-label="History metric" id="histMetric">
+            <button data-h="soc" aria-pressed="true">SOC</button>
+            <button data-h="voltage" aria-pressed="false">Voltage</button>
+            <button data-h="current" aria-pressed="false">Current</button>
+            <button data-h="temp" aria-pressed="false">Temp</button>
+          </div>
+        </div>
+        <div class="chart" id="histLine"></div>
+        <div class="chart-head"><span class="legend"><span><i style="background:var(--series-1)"></i>30-min average</span><span><i style="background:var(--series-1-soft)"></i>min–max</span></span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:12px">
+    <details>
+      <summary>Bluetooth log (raw frames)</summary>
+      <div id="log"></div>
+    </details>
+  </section>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+ * WattCycle / TDT BMS protocol over BLE
+ * Reference: aiobmsble "tdt_bms" plugin (Apache-2.0), which the
+ * Home Assistant BMS_BLE integration uses for WattCycle packs.
+ *   Service FFF0 · notify FFF1 · write FFF2 · unlock FFFA ("HiLink")
+ *   Frame: head ver 01 03 00 cmd lenHi lenLo data.. crcHi crcLo 0D
+ *   Commands: 0x8C pack/cell/temps, 0x8D status/MOSFET, 0x92 device info
+ * ============================================================ */
+const uuid16 = (x) => `0000${x}-0000-1000-8000-00805f9b34fb`;
+const SVC_MAIN = uuid16("fff0"), CHR_NOTIFY = uuid16("fff1"), CHR_WRITE = uuid16("fff2"), CHR_UNLOCK = uuid16("fffa");
+const SVC_ALT = uuid16("ffe0"), CHR_ALT = uuid16("ffe1");
+const CMD_PACK = 0x8C, CMD_STATUS = 0x8D, CMD_INFO = 0x92;
+
+function crcModbus(bytes) {
+  let crc = 0xFFFF;
+  for (const b of bytes) {
+    crc ^= b;
+    for (let i = 0; i < 8; i++) crc = (crc & 1) ? (crc >>> 1) ^ 0xA001 : crc >>> 1;
+  }
+  return crc & 0xFFFF;
+}
+function buildCmd(cmd, head = 0x7E) {
+  const f = [head, 0x00, 0x01, 0x03, 0x00, cmd, 0x00, 0x00];
+  const crc = crcModbus(f);
+  return new Uint8Array([...f, crc >> 8, crc & 0xFF, 0x0D]);
+}
+const hex = (u8) => Array.from(u8, (b) => b.toString(16).padStart(2, "0")).join(" ");
+const u16 = (b, i) => (b[i] << 8) | b[i + 1];
+const str = (b, s, e) => new TextDecoder().decode(b.slice(s, e)).replace(/\0.*$/s, "").trim();
+
+/* ---------- state ---------- */
+const S = {
+  device: null, server: null, notifyChr: null, writeChr: null,
+  head: 0x7E, polling: null, busy: false, demo: null,
+  rx: [], waiters: new Map(), firmwareV1: false,
+  data: {}, history: [], counts: { cells: 0, temps: 0 },
+};
+const MAX_HISTORY = 1800;
+
+/* ---------- logging & UI status ---------- */
+const logEl = document.getElementById("log");
+function log(msg) {
+  const t = new Date().toLocaleTimeString();
+  logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent.slice(0, 20000);
+}
+function setConn(state, text) {
+  const d = document.getElementById("conndot");
+  d.className = "dot" + (state ? " " + state : "");
+  document.getElementById("conntext").textContent = text;
+  relay({ conn: { state, text }, device: document.getElementById("devname").textContent });
+}
+
+/* ---------- remote relay ----------
+ * ROLE "local": this window owns the Bluetooth link and pushes readings to serve.js.
+ * ROLE "remote": opened through the internet tunnel; read-only view of what the local window relays.
+ */
+let ROLE = "local";
+// No `keepalive: true` here: the browser caps keepalive requests at ~64 KB in flight per page and the quota
+// leaked, so after a few hundred readings every relay was silently rejected.
+let relayFailing = false;
+function relay(msg) {
+  if (ROLE !== "local") return;
+  fetch("/api/data", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg) })
+    .then((r) => {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      if (relayFailing) { relayFailing = false; log("Relay to server working again"); }
+    })
+    .catch((e) => {   // server restarting: drop this reading, the next one will get through
+      if (!relayFailing) { relayFailing = true; log("Relay to server failed (remote viewers won't update): " + e.message); }
+    });
+}
+function notice(msg) {
+  const n = document.getElementById("notice");
+  n.style.display = msg ? "block" : "none";
+  n.innerHTML = msg || "";
+}
+
+/* ---------- frame reassembly ---------- */
+function onNotify(ev) {
+  const chunk = new Uint8Array(ev.target.value.buffer.slice(0));
+  log("RX " + hex(chunk));
+  const startsFrame = chunk.length > 7 && (chunk[0] === 0x7E || chunk[0] === 0x1E) && (chunk[1] === 0x00 || chunk[1] === 0x04);
+  if (startsFrame && (S.rx.length === 0 || frameComplete())) S.rx = [];
+  if (!startsFrame && S.rx.length === 0) return;
+  S.rx.push(...chunk);
+  if (frameComplete()) { handleFrame(new Uint8Array(S.rx)); S.rx = []; }
+}
+function frameComplete() {
+  if (S.rx.length < 8) return false;
+  const need = 10 + u16(S.rx, 6);  // header(8)+CRC(2)+tail ... accept 10+len or 11+len
+  return S.rx.length >= need && S.rx[S.rx.length - 1] === 0x0D;
+}
+function handleFrame(f) {
+  const cmd = f[5], err = f[4];
+  const body = f.slice(0, f.length - 3);
+  const crcRx = u16(f, f.length - 3), crcCalc = crcModbus(body);
+  const crcOk = crcRx === crcCalc || crcRx === (((crcCalc & 0xFF) << 8) | (crcCalc >> 8));
+  if (!crcOk && cmd !== CMD_STATUS) { log(`CRC mismatch on 0x${cmd.toString(16)} (got ${crcRx.toString(16)}, want ${crcCalc.toString(16)}), frame dropped`); return; }
+  if (err !== 0) { log(`BMS returned error code ${err} for 0x${cmd.toString(16)}`); }
+  const w = S.waiters.get(cmd);
+  if (w) { S.waiters.delete(cmd); w(body); }
+}
+function awaitFrame(cmd, ms = 2500) {
+  return new Promise((resolve, reject) => {
+    const to = setTimeout(() => { S.waiters.delete(cmd); reject(new Error("timeout 0x" + cmd.toString(16))); }, ms);
+    S.waiters.set(cmd, (b) => { clearTimeout(to); resolve(b); });
+  });
+}
+async function send(cmd) {
+  const frame = buildCmd(cmd, S.head);
+  log("TX " + hex(frame));
+  const p = awaitFrame(cmd);
+  p.catch(() => {});   // if the write below fails we never await p; don't leave an unhandled rejection
+  // A GATT write can hang forever on a flaky link (Windows BLE stack); without a timeout polling stalls silently.
+  const write = S.writeChr.properties.writeWithoutResponse && S.writeChr.writeValueWithoutResponse
+    ? S.writeChr.writeValueWithoutResponse(frame) : S.writeChr.writeValue(frame);
+  await withTimeout(write, 3000, "write timeout");
+  return p;
+}
+function withTimeout(promise, ms, msg) {
+  let to;
+  return Promise.race([promise, new Promise((_, rej) => (to = setTimeout(() => rej(new Error(msg)), ms)))]).finally(() => clearTimeout(to));
+}
+
+/* ---------- parsers ---------- */
+function parsePack(b) {
+  const n = b[8];
+  const cells = [];
+  for (let i = 0; i < n; i++) cells.push(u16(b, 9 + 2 * i) / 1000);
+  const tPos = 9 + 2 * n, t = b[tPos];
+  const temps = [];
+  for (let i = 0; i < t; i++) temps.push((u16(b, tPos + 1 + 2 * i) - 2730) / 10);
+  const s = 10 + 2 * (n + t);
+  const rawI = u16(b, s);
+  let current = (rawI & 0x3FFF) / (S.firmwareV1 ? 1 : 10);
+  if (rawI & 0x8000) current = -current;
+  const voltage = u16(b, s + 2) / 100;
+  const remaining = u16(b, s + 4) / (S.firmwareV1 ? 1 : 10);
+  const cycles = u16(b, s + 8);
+  const design = S.firmwareV1 ? u16(b, s + 10) : Math.floor(u16(b, s + 10) / 10);
+  const soc = u16(b, s + 12);
+  const soh = u16(b, s + 14);
+  S.counts = { cells: n, temps: t };
+  return { cells, temps, current, voltage, remaining, cycles, design, soc, soh, power: voltage * current };
+}
+function parseStatus(b) {
+  const idx = S.counts.cells + S.counts.temps;
+  if (b.length <= 16 + idx) return {};
+  const problem = u16(b, 14 + idx), mos = b[16 + idx];
+  return { problem, chargeFet: !!(mos & 0x02), dischargeFet: !!(mos & 0x04) };
+}
+function parseInfo(b) {
+  return { fw: str(b, 8, 28), mfr: str(b, 28, 48), serial: str(b, 48, 68) };
+}
+
+/* ---------- BLE connect ---------- */
+async function connect() {
+  if (!navigator.bluetooth) {
+    notice("This browser has no Web Bluetooth. Open this page in <b>Chrome</b> or <b>Edge</b> on Windows, macOS, Android or ChromeOS, served from <code>http://localhost</code> or <code>https://</code>.");
+    return;
+  }
+  stopDemo();
+  clearTimeout(autoTimer); autoTries = 0;
+  notice("");
+  const all = document.getElementById("allDevices").checked;
+  const opts = {
+    optionalServices: [SVC_MAIN, SVC_ALT],
+    ...(all ? { acceptAllDevices: true } : {
+      filters: [
+        { namePrefix: "WT" }, { namePrefix: "HS" }, { namePrefix: "XDZN" },
+        { namePrefix: "WattCycle" }, { services: [SVC_MAIN] },
+      ],
+    }),
+  };
+  try {
+    setConn("busy", "Choosing device…");
+    const dev = await navigator.bluetooth.requestDevice(opts);
+    attachDevice(dev);
+    await openGatt();
+    saveConfig({ deviceId: dev.id, deviceName: dev.name || null });
+  } catch (e) {
+    setConn("err", "Not connected");
+    if (e.name !== "NotFoundError") { log("Connect error: " + e.message); notice("Could not connect: " + e.message); }
+  }
+}
+function attachDevice(dev) {
+  if (S.device && S.device !== dev) S.device.removeEventListener("gattserverdisconnected", onDisconnected);
+  S.device = dev;
+  dev.removeEventListener("gattserverdisconnected", onDisconnected);
+  dev.addEventListener("gattserverdisconnected", onDisconnected);
+  document.getElementById("devname").textContent = dev.name || dev.id;
+}
+
+/* ---------- saved configuration (config.json via serve.js) ---------- */
+let CFG = {};
+async function loadConfig() {
+  try {
+    const r = await fetch("/api/config", { cache: "no-store" });
+    if (r.ok) CFG = await r.json();
+  } catch (e) { log("Could not load config: " + e.message); }
+  if (CFG.interval) document.getElementById("interval").value = String(CFG.interval);
+  if (CFG.allDevices != null) document.getElementById("allDevices").checked = !!CFG.allDevices;
+  if (CFG.autoConnect != null) document.getElementById("autoConnect").checked = !!CFG.autoConnect;
+  if (CFG.trendMetric && METRICS[CFG.trendMetric]) {
+    trendMetric = CFG.trendMetric;
+    document.querySelectorAll("#trendTabs button").forEach((x) => x.setAttribute("aria-pressed", x.dataset.m === trendMetric));
+  }
+  return CFG;
+}
+async function saveConfig(patch) {
+  Object.assign(CFG, patch);
+  if (ROLE !== "local") return;
+  try {
+    const r = await fetch("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    CFG = await r.json();
+  } catch (e) { log("Could not save config: " + e.message); }
+}
+
+/* ---------- auto-connect on start ----------
+ * Browsers only let a page open the device chooser after a click, but a device the user already picked
+ * can be reopened silently through navigator.bluetooth.getDevices(). start.bat launches Edge/Chrome with
+ * the flag that enables it. If the battery is out of range or asleep we keep retrying in the background.
+ */
+let autoTimer = null, autoTries = 0;
+async function autoConnect() {
+  clearTimeout(autoTimer);
+  if (!CFG.deviceId || !document.getElementById("autoConnect").checked || S.device?.gatt.connected || S.demo) return;
+  if (!navigator.bluetooth?.getDevices) {
+    notice(`Saved battery: <b>${CFG.deviceName || CFG.deviceId}</b>. This browser can't reconnect on its own; ` +
+      `start the dashboard with <code>start.bat</code>, or enable <code>chrome://flags/#enable-web-bluetooth-new-permissions-backend</code>, then press <b>Connect battery</b> once.`);
+    return;
+  }
+  const devices = await navigator.bluetooth.getDevices();
+  const dev = devices.find((d) => d.id === CFG.deviceId) || (CFG.deviceName && devices.find((d) => d.name === CFG.deviceName));
+  if (!dev) {
+    notice(`The browser no longer has permission for <b>${CFG.deviceName || "the saved battery"}</b>. Press <b>Connect battery</b> to pick it again.`);
+    return;
+  }
+  attachDevice(dev);
+  setConn("busy", "Auto-connecting…");
+  log(`Auto-connecting to ${dev.name || dev.id} (attempt ${++autoTries})`);
+  try {
+    // Wait for the pack to advertise before connecting (faster and avoids long GATT timeouts), when supported.
+    if (dev.watchAdvertisements && autoTries > 1) await waitForAdvert(dev, 15000).catch(() => {});
+    await openGatt();
+    autoTries = 0;
+    notice("");
+    if (dev.id !== CFG.deviceId) saveConfig({ deviceId: dev.id });
+  } catch (e) {
+    log("Auto-connect failed: " + e.message);
+    try { if (dev.gatt.connected) dev.gatt.disconnect(); } catch {}
+    const wait = Math.min(60000, 5000 * autoTries);
+    setConn("err", `Retrying in ${wait / 1000} s`);
+    notice(`Waiting for <b>${dev.name || "the battery"}</b>… make sure it is in range and the WattCycle phone app is closed.`);
+    autoTimer = setTimeout(autoConnect, wait);
+  }
+}
+function waitForAdvert(dev, ms) {
+  return new Promise((resolve, reject) => {
+    const ac = new AbortController();
+    const done = (ok) => { clearTimeout(to); ac.abort(); dev.removeEventListener("advertisementreceived", onAdv); ok ? resolve() : reject(new Error("no advertisement")); };
+    const onAdv = () => done(true);
+    const to = setTimeout(() => done(false), ms);
+    dev.addEventListener("advertisementreceived", onAdv);
+    dev.watchAdvertisements({ signal: ac.signal }).catch(() => done(false));
+  });
+}
+
+async function openGatt() {
+  setConn("busy", "Connecting…");
+  S.server = await S.device.gatt.connect();
+  log("GATT connected");
+  let svc;
+  try {
+    svc = await S.server.getPrimaryService(SVC_MAIN);
+    S.notifyChr = await svc.getCharacteristic(CHR_NOTIFY);
+    S.writeChr = await svc.getCharacteristic(CHR_WRITE);
+    try {
+      const unlock = await svc.getCharacteristic(CHR_UNLOCK);
+      await unlock.writeValue(new TextEncoder().encode("HiLink"));
+      const v = await unlock.readValue();
+      log("Unlock (HiLink) → " + hex(new Uint8Array(v.buffer)));
+    } catch (e) { log("No FFFA unlock characteristic, skipping (" + e.message + ")"); }
+  } catch (e) {
+    log("FFF0 service not found, trying FFE0/FFE1");
+    svc = await S.server.getPrimaryService(SVC_ALT);
+    S.notifyChr = S.writeChr = await svc.getCharacteristic(CHR_ALT);
+  }
+  S.notifyChr.addEventListener("characteristicvaluechanged", onNotify);
+  await S.notifyChr.startNotifications();
+  setConn("ok", "Connected");
+  document.getElementById("btnConnect").textContent = "Disconnect";
+
+  // Device info first; also detects which frame head (0x7E / 0x1E) the BMS answers.
+  let info = null;
+  for (const head of [0x7E, 0x1E]) {
+    S.head = head;
+    try { info = parseInfo(await send(CMD_INFO)); break; } catch (e) { log(`No reply to 0x92 with head 0x${head.toString(16)}`); }
+  }
+  if (info) {
+    S.firmwareV1 = info.fw.slice(0, -1).endsWith("1.");
+    Object.assign(S.data, info);
+    renderInfo();
+  }
+  startPolling();
+}
+function onDisconnected() {
+  log("Disconnected");
+  stopPolling();
+  setConn("err", "Disconnected");
+  document.getElementById("btnConnect").textContent = "Connect battery";
+  if (S.device && S.wantConnected) {
+    notice("Connection lost. Reconnecting…");
+    setTimeout(() => openGatt().then(() => notice("")).catch((e) => {
+      if (S.device && document.getElementById("autoConnect").checked && CFG.deviceId) { log("Reconnect failed: " + e.message); autoTimer = setTimeout(autoConnect, 5000); }
+      else notice("Reconnect failed: " + e.message + ". Press Connect to try again.");
+    }), 1500);
+  }
+}
+function disconnect() {
+  S.wantConnected = false;
+  clearTimeout(autoTimer); autoTries = 0;
+  stopPolling();
+  if (S.device?.gatt.connected) S.device.gatt.disconnect();
+  S.device = null;
+  setConn("", "Idle");
+  document.getElementById("btnConnect").textContent = "Connect battery";
+  document.getElementById("devname").textContent = "Not connected";
+  relay({ device: "Not connected" });
+}
+
+/* ---------- polling ---------- */
+function startPolling() {
+  S.wantConnected = true;
+  stopPolling();
+  const ms = +document.getElementById("interval").value;
+  poll();
+  S.polling = setInterval(poll, ms);
+}
+function stopPolling() { clearInterval(S.polling); S.polling = null; }
+let misses = 0;
+async function poll() {
+  if (S.busy && Date.now() - S.busySince > 20000) { log("Previous poll stuck for 20 s, resetting"); S.busy = false; }
+  if (S.busy || !S.device?.gatt.connected) return;
+  S.busy = true; S.busySince = Date.now();
+  try {
+    const pack = parsePack(await send(CMD_PACK));
+    let status = {};
+    try { status = parseStatus(await send(CMD_STATUS)); } catch (e) { log(e.message); }
+    if (misses >= 3) { setConn("ok", "Connected"); notice(""); }
+    misses = 0;
+    ingest({ ...pack, ...status });
+  } catch (e) {
+    misses++;
+    log("Poll failed: " + e.message);
+    if (misses === 3) {
+      S.head = S.head === 0x7E ? 0x1E : 0x7E;
+      log(`Switching frame head to 0x${S.head.toString(16)}`);
+      setConn("busy", "Battery not answering");
+      notice("The battery is not answering. Make sure the WattCycle phone app is closed (the BMS accepts only one connection at a time), then check the log below.");
+    }
+    if (misses >= 6) {
+      // Link is up on paper but dead in practice: drop it; onDisconnected() reconnects (and falls back to auto-connect retries).
+      log("No answer for 6 polls, forcing a Bluetooth reconnect");
+      misses = 0;
+      try { S.device.gatt.disconnect(); } catch {}
+    }
+  } finally { S.busy = false; }
+}
+
+/* ---------- demo mode ---------- */
+function startDemo() {
+  disconnect();
+  notice("Showing <b>simulated</b> data. Press <b>Connect battery</b> to read a real pack.");
+  setConn("busy", "Demo");
+  document.getElementById("devname").textContent = "Demo · 12.8 V 100 Ah LiFePO₄";
+  Object.assign(S.data, { fw: "TDT-V2.0.1", mfr: "Demo", serial: "DEMO-0001" });
+  renderInfo();
+  S.demoMode = true;   // demo readings are flagged so the server never stores them in the history database
+  let soc = 78, t = 0;
+  const tick = () => {
+    t++;
+    const current = +(Math.sin(t / 25) * 18 + Math.sin(t / 4) * 2 - 4).toFixed(1);
+    soc = Math.max(5, Math.min(100, soc + current * 2 / 3600));
+    const base = 3.22 + soc / 100 * 0.12 + current * 0.0015;
+    const cells = [0, 1, 2, 3].map((i) => +(base + [0.004, -0.006, 0.011, 0][i] + (Math.random() - .5) * 0.003).toFixed(3));
+    const voltage = cells.reduce((a, b) => a + b, 0);
+    ingest({
+      cells, temps: [24.5 + Math.random(), 27 + Math.abs(current) / 10, 25.1, 25.4],
+      current, voltage, remaining: soc, design: 100, soc: Math.round(soc), soh: 98, cycles: 142,
+      power: voltage * current, problem: 0, chargeFet: true, dischargeFet: true,
+    });
+  };
+  tick();
+  S.demo = setInterval(tick, +document.getElementById("interval").value);
+}
+function stopDemo() { S.demoMode = false; if (S.demo) { clearInterval(S.demo); S.demo = null; notice(""); } }
+
+/* ---------- ingest & render ---------- */
+/* Energy totals. The BMS measures one net current, so "in" is the integral of positive current and
+ * "out" the integral of negative current. Gaps longer than 30 s (sleep, disconnect) are not bridged. */
+const TOT = { inAh: 0, inWh: 0, outAh: 0, outWh: 0, since: Date.now(), lastT: 0 };
+function accumulate(d) {
+  const now = Date.now();
+  if (TOT.lastT && d.current != null) {
+    const h = Math.min(now - TOT.lastT, 30000) / 3.6e6;
+    const p = d.power ?? d.voltage * d.current;
+    if (d.current > 0) { TOT.inAh += d.current * h; TOT.inWh += p * h; }
+    else if (d.current < 0) { TOT.outAh -= d.current * h; TOT.outWh -= p * h; }
+  }
+  TOT.lastT = now;
+  return { totals: { inAh: TOT.inAh, inWh: TOT.inWh, outAh: TOT.outAh, outWh: TOT.outWh, since: TOT.since } };
+}
+function resetTotals() {
+  Object.assign(TOT, { inAh: 0, inWh: 0, outAh: 0, outWh: 0, since: Date.now() });
+  S.data.totals = { inAh: 0, inWh: 0, outAh: 0, outWh: 0, since: TOT.since };
+  relay({ data: { totals: S.data.totals } });
+  render();
+}
+
+function ingest(d) {
+  d = { ...d, ...accumulate(d) };
+  Object.assign(S.data, d);
+  const point = { t: Date.now(), current: d.current, voltage: d.voltage, power: d.power, soc: d.soc, ...(S.demoMode && { demo: true }) };
+  S.history.push(point);
+  if (S.history.length > MAX_HISTORY) S.history.shift();
+  document.getElementById("btnCsv").disabled = false;
+  render();
+  relay({ data: d, point, device: document.getElementById("devname").textContent, interval: +document.getElementById("interval").value });
+}
+
+/* ---------- remote viewer ---------- */
+let lastRemoteAt = 0, lastDataAt = 0, remoteInterval = 2000, remoteConn = null;
+function startViewer() {
+  ["btnConnect", "btnDemo", "interval", "btnResetTotals"].forEach((id) => (document.getElementById(id).style.display = "none"));
+  ["allDevices", "autoConnect"].forEach((id) => (document.getElementById(id).closest("label").style.display = "none"));
+  document.querySelector("details:has(#log)")?.closest("section")?.style.setProperty("display", "none");
+  const secs = (ms) => ms < 120000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60000)} min`;
+  const showConn = () => {
+    const d = document.getElementById("conndot"), t = document.getElementById("conntext");
+    const now = Date.now();
+    const pcAge = lastRemoteAt ? now - lastRemoteAt : Infinity;     // any message, incl. 10 s heartbeat
+    const dataAge = lastDataAt ? now - lastDataAt : Infinity;       // actual battery readings
+    if (!lastRemoteAt) { d.className = "dot err"; t.textContent = "Waiting for dashboard PC"; notice("The dashboard PC hasn't sent anything yet. Check that the dashboard window is open there."); }
+    else if (pcAge > 75000) {
+      d.className = "dot err"; t.textContent = `PC window silent for ${secs(pcAge)}`;
+      notice("The dashboard window on the PC has stopped responding: it may be closed, the PC may be asleep, or the browser paused it. Showing the last readings received.");
+    } else if (remoteConn?.state === "ok" && dataAge > Math.max(15000, remoteInterval * 4)) {
+      d.className = "dot busy"; t.textContent = `No battery data for ${secs(dataAge)}`;
+      notice("");
+    } else { d.className = "dot" + (remoteConn?.state ? " " + remoteConn.state : ""); t.textContent = "Live · " + (remoteConn?.text || "--"); notice(""); }
+  };
+  const apply = (m) => {
+    if (m.at) lastRemoteAt = m.at;
+    if (m.dataAt) lastDataAt = m.dataAt;
+    if (m.point) lastDataAt = m.at || Date.now();
+    if (m.interval) remoteInterval = m.interval;
+    if (m.conn) remoteConn = m.conn;
+    if (m.device) document.getElementById("devname").textContent = m.device;
+    if (m.data) Object.assign(S.data, m.data);
+  };
+  const es = new EventSource("/api/stream");
+  es.addEventListener("snapshot", (e) => {
+    const s = JSON.parse(e.data);
+    S.data = {}; apply(s);
+    S.history = s.history || [];
+    document.getElementById("btnCsv").disabled = !S.history.length;
+    notice(s.at ? "" : "The dashboard PC hasn't sent any readings yet. Check that the dashboard window is open there and connected to the battery.");
+    renderInfo(); render(); showConn();
+  });
+  es.addEventListener("update", (e) => {
+    const m = JSON.parse(e.data);
+    apply(m);
+    if (m.point) {
+      S.history.push(m.point);
+      if (S.history.length > MAX_HISTORY) S.history.shift();
+      document.getElementById("btnCsv").disabled = false;
+      notice("");
+    }
+    if (m.data) { renderInfo(); render(); }
+    showConn();
+  });
+  es.onerror = () => { document.getElementById("conndot").className = "dot err"; document.getElementById("conntext").textContent = "Reconnecting to server…"; };
+  setInterval(showConn, 5000);
+}
+const fmt = (v, dp) => (v == null || Number.isNaN(v)) ? "--" : v.toFixed(dp);
+function setVal(id, v, unit) { document.getElementById(id).innerHTML = `${v}<small>${unit}</small>`; }
+
+function render() {
+  const d = S.data;
+  // SOC ring
+  const soc = Math.max(0, Math.min(100, d.soc ?? 0));
+  document.getElementById("socArc").setAttribute("stroke-dasharray", `${(soc / 100) * 251.3} 252`);
+  document.getElementById("soc").innerHTML = `${d.soc ?? "--"}<small style="font-size:18px;color:var(--text-secondary)">%</small>`;
+  document.getElementById("socMeta").textContent = `${fmt(d.remaining, 1)} / ${d.design ?? "--"} Ah remaining`;
+  let eta = "Idle";
+  if (d.current > 0.3 && d.design) eta = `Full in ~${hm((d.design - d.remaining) / d.current)}`;
+  else if (d.current < -0.3) eta = `Empty in ~${hm(d.remaining / -d.current)}`;
+  document.getElementById("eta").textContent = eta;
+
+  setVal("volt", fmt(d.voltage, 2), "V");
+  // Charge / discharge split of the single net current the BMS reports.
+  const has = d.current != null;
+  const pw = d.power ?? (has ? d.voltage * d.current : null);
+  const charging = d.current > 0.3, discharging = d.current < -0.3;
+  setVal("inA", has ? fmt(charging ? d.current : 0, 1) : "--", "A");
+  setVal("inW", has ? fmt(charging ? pw : 0, 0) : "--", "W");
+  setVal("outA", has ? fmt(discharging ? -d.current : 0, 1) : "--", "A");
+  setVal("outW", has ? fmt(discharging ? -pw : 0, 0) : "--", "W");
+  document.getElementById("flowIn").classList.toggle("active", charging);
+  document.getElementById("flowOut").classList.toggle("active", discharging);
+  const T = d.totals;
+  if (T) {
+    const since = new Date(T.since).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    document.getElementById("inTot").textContent = `Total in: ${fmt(T.inAh, 2)} Ah · ${fmt(T.inWh, 1)} Wh since ${since}`;
+    document.getElementById("outTot").textContent = `Total out: ${fmt(T.outAh, 2)} Ah · ${fmt(T.outWh, 1)} Wh since ${since}`;
+  }
+  if (d.cells?.length) document.getElementById("voltMeta").textContent = `${d.cells.length} cells · avg ${fmt(d.voltage / d.cells.length, 3)} V`;
+
+  document.getElementById("cycles").textContent = d.cycles ?? "--";
+  document.getElementById("soh").textContent = d.soh != null ? d.soh + " %" : "--";
+  document.getElementById("design").textContent = d.design != null ? d.design + " Ah" : "--";
+  document.getElementById("updated").textContent = new Date().toLocaleTimeString();
+
+  renderStatus(d);
+  renderTemps(d.temps || []);
+  renderCells(d.cells || []);
+  renderTrend();
+}
+function hm(h) { if (!isFinite(h) || h < 0) return "--"; const m = Math.round(h * 60); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} m` : `${m} m`; }
+function renderInfo() {
+  document.getElementById("fw").textContent = S.data.fw || "--";
+  document.getElementById("mfr").textContent = S.data.mfr || "--";
+  document.getElementById("serial").textContent = S.data.serial || "--";
+  relay({ data: { fw: S.data.fw, mfr: S.data.mfr, serial: S.data.serial } });
+}
+
+const ICON = {
+  good: '<svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="var(--good)"/><path d="M4.5 8.2l2.2 2.2 4.8-4.8" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>',
+  warning: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1.5l7 12.5H1z" fill="var(--warning)"/><path d="M8 6v4M8 11.8v.4" stroke="#1a1a19" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  critical: '<svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="var(--critical)"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>',
+};
+function renderStatus(d) {
+  const items = [];
+  if (d.chargeFet !== undefined) {
+    items.push([d.chargeFet ? "good" : "critical", `Charge MOSFET ${d.chargeFet ? "on" : "off"}`]);
+    items.push([d.dischargeFet ? "good" : "critical", `Discharge MOSFET ${d.dischargeFet ? "on" : "off"}`]);
+  }
+  if (d.problem !== undefined) items.push([d.problem ? "warning" : "good", d.problem ? `Protection code 0x${d.problem.toString(16).padStart(4, "0")}` : "No protection alarms"]);
+  if (d.cells?.length) {
+    const delta = (Math.max(...d.cells) - Math.min(...d.cells)) * 1000;
+    items.push([delta > 50 ? "critical" : delta > 20 ? "warning" : "good", `Cell imbalance ${delta.toFixed(0)} mV`]);
+  }
+  if (d.temps?.length) {
+    const tmax = Math.max(...d.temps);
+    items.push([tmax > 55 ? "critical" : tmax > 45 || Math.min(...d.temps) < 0 ? "warning" : "good", `Max temperature ${tmax.toFixed(1)} °C`]);
+  }
+  document.getElementById("statusList").innerHTML = items.map(([k, t]) => `<div class="status">${ICON[k]}<span>${t}</span></div>`).join("") || '<div class="sub">No data yet</div>';
+}
+function renderTemps(temps) {
+  const names = ["Ambient", "MOSFET", "Cell 1", "Cell 2", "Cell 3", "Cell 4"];
+  document.getElementById("temps").innerHTML = temps.length
+    ? temps.map((v, i) => `<div class="t"><div class="n">${names[i] || "Sensor " + (i + 1)}</div><div class="v">${v.toFixed(1)} °C</div></div>`).join("")
+    : '<div class="sub">No data yet</div>';
+}
+
+/* ---------- charts (hand-rolled SVG) ---------- */
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent?.appendChild(e); return e; }
+function niceTicks(min, max, count = 4) {
+  if (min === max) { min -= 1; max += 1; }
+  const span = max - min, step0 = span / count, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= step0);
+  const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
+  const t = []; for (let v = lo; v <= hi + step / 2; v += step) t.push(+v.toFixed(6));
+  return t;
+}
+
+function renderCells(cells) {
+  const box = document.getElementById("cellChart");
+  const stat = document.getElementById("cellStat");
+  const tbl = document.getElementById("cellTable");
+  if (!cells.length) { box.innerHTML = '<div class="sub">No data yet</div>'; return; }
+  const min = Math.min(...cells), max = Math.max(...cells);
+  stat.textContent = `min ${min.toFixed(3)} · max ${max.toFixed(3)} · Δ ${((max - min) * 1000).toFixed(0)} mV`;
+  tbl.innerHTML = "<tr><th>Cell</th><th>Voltage (V)</th><th>vs. avg (mV)</th></tr>" +
+    cells.map((v, i) => `<tr><td>${i + 1}</td><td>${v.toFixed(3)}</td><td>${((v - cells.reduce((a, b) => a + b) / cells.length) * 1000).toFixed(0)}</td></tr>`).join("");
+
+  const W = 520, H = 220, m = { l: 44, r: 8, t: 18, b: 24 };
+  const lo = Math.min(min - 0.02, 3.0), hi = Math.max(max + 0.02, 3.45);
+  const ticks = niceTicks(lo, hi, 4), y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const y = (v) => m.t + (H - m.t - m.b) * (1 - (v - y0) / (y1 - y0));
+  box.innerHTML = "";
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Cell voltages" }, box);
+  const ax = el("g", { class: "axis" }, svg);
+  ticks.forEach((t) => {
+    el("line", { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), stroke: "var(--grid)" }, ax);
+    el("text", { x: m.l - 6, y: y(t) + 4, "text-anchor": "end" }, ax).textContent = t.toFixed(2);
+  });
+  const n = cells.length, slot = (W - m.l - m.r) / n, bw = Math.min(42, slot - 2);
+  const tip = makeTip(box);
+  cells.forEach((v, i) => {
+    const x = m.l + slot * i + (slot - bw) / 2, top = y(v), base = y(y0);
+    const h = Math.max(1, base - top), r = Math.min(4, h, bw / 2);
+    el("path", { d: `M${x},${base}V${top + r}q0,-${r} ${r},-${r}h${bw - 2 * r}q${r},0 ${r},${r}V${base}Z`, fill: "var(--series-1)" }, svg);
+    if (v === max || v === min) {
+      el("text", { x: x + bw / 2, y: top - 5, "text-anchor": "middle", "font-size": 11, fill: "var(--text-secondary)" }, svg).textContent = (v === max ? "max " : "min ") + v.toFixed(3);
+    }
+    el("text", { x: x + bw / 2, y: H - 6, "text-anchor": "middle", "font-size": 11, fill: "var(--text-muted)" }, svg).textContent = i + 1;
+    const hit = el("rect", { x: m.l + slot * i, y: m.t, width: slot, height: H - m.t - m.b, fill: "transparent" }, svg);
+    hit.addEventListener("pointermove", (e) => showTip(tip, box, e, `<b>Cell ${i + 1}</b><br>${v.toFixed(3)} V`));
+    hit.addEventListener("pointerleave", () => (tip.style.display = "none"));
+  });
+}
+
+let trendMetric = "current";
+const METRICS = {
+  current: { title: "Current (A)", unit: "A", dp: 1, zero: true },
+  voltage: { title: "Pack voltage (V)", unit: "V", dp: 2 },
+  power: { title: "Power (W)", unit: "W", dp: 0, zero: true },
+  soc: { title: "State of charge (%)", unit: "%", dp: 0 },
+};
+function renderTrend() {
+  const box = document.getElementById("trendChart");
+  const M = METRICS[trendMetric];
+  document.getElementById("trendTitle").textContent = M.title;
+  const pts = S.history.filter((p) => p[trendMetric] != null);
+  if (pts.length < 2) { box.innerHTML = '<div class="sub" style="padding:40px 0">Collecting data…</div>'; return; }
+  const vals = pts.map((p) => p[trendMetric]);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (M.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  const ticks = niceTicks(lo, hi, 4), y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const W = 720, H = 240, m = { l: 48, r: 12, t: 10, b: 24 };
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+  const x = (t) => m.l + (W - m.l - m.r) * ((t - t0) / Math.max(1, t1 - t0));
+  const y = (v) => m.t + (H - m.t - m.b) * (1 - (v - y0) / (y1 - y0));
+  box.innerHTML = "";
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": M.title + " over time" }, box);
+  const ax = el("g", { class: "axis" }, svg);
+  ticks.forEach((t) => {
+    el("line", { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), stroke: t === 0 && M.zero ? "var(--text-muted)" : "var(--grid)", "stroke-width": t === 0 && M.zero ? 1 : 1 }, ax);
+    el("text", { x: m.l - 6, y: y(t) + 4, "text-anchor": "end" }, ax).textContent = t.toFixed(Math.abs(y1 - y0) < 5 ? 2 : 0);
+  });
+  [t0, (t0 + t1) / 2, t1].forEach((t, i) => {
+    el("text", { x: x(t), y: H - 6, "text-anchor": ["start", "middle", "end"][i] }, ax).textContent = new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  });
+  const line = pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p[trendMetric]).toFixed(1)}`).join("");
+  const base = y(M.zero ? 0 : y0);
+  const area = `${line}L${x(t1)},${base}L${x(t0)},${base}Z`;
+  document.getElementById("trendLegend").style.visibility = M.zero ? "visible" : "hidden";
+  // Signed metrics (current, power): charge above zero in green, discharge below zero in orange.
+  const colorOf = (v) => !M.zero ? "var(--series-1)" : v >= 0 ? "var(--charge)" : "var(--discharge)";
+  if (M.zero) {
+    const defs = el("defs", {}, svg);
+    el("rect", { x: 0, y: 0, width: W, height: base }, el("clipPath", { id: "clipIn" }, defs));
+    el("rect", { x: 0, y: base, width: W, height: H - base }, el("clipPath", { id: "clipOut" }, defs));
+    [["clipIn", "charge"], ["clipOut", "discharge"]].forEach(([clip, c]) => {
+      const g = el("g", { "clip-path": `url(#${clip})` }, svg);
+      el("path", { d: area, fill: `var(--${c}-soft)` }, g);
+      el("path", { d: line, fill: "none", stroke: `var(--${c})`, "stroke-width": 2, "stroke-linejoin": "round" }, g);
+    });
+  } else {
+    el("path", { d: area, fill: "var(--series-1-soft)" }, svg);
+    el("path", { d: line, fill: "none", stroke: "var(--series-1)", "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+  }
+  const last = pts[pts.length - 1];
+  el("circle", { cx: x(last.t), cy: y(last[trendMetric]), r: 4, fill: colorOf(last[trendMetric]), stroke: "var(--surface-1)", "stroke-width": 2 }, svg);
+
+  const cross = el("line", { y1: m.t, y2: H - m.b, stroke: "var(--text-muted)", "stroke-dasharray": "3 3", visibility: "hidden" }, svg);
+  const dot = el("circle", { r: 4, fill: "var(--series-1)", stroke: "var(--surface-1)", "stroke-width": 2, visibility: "hidden" }, svg);
+  const tip = makeTip(box);
+  const hit = el("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: "transparent" }, svg);
+  hit.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect(), sx = (e.clientX - r.left) * (W / r.width);
+    const tt = t0 + ((sx - m.l) / (W - m.l - m.r)) * (t1 - t0);
+    let best = pts[0]; for (const p of pts) if (Math.abs(p.t - tt) < Math.abs(best.t - tt)) best = p;
+    cross.setAttribute("x1", x(best.t)); cross.setAttribute("x2", x(best.t)); cross.setAttribute("visibility", "visible");
+    const bv = best[trendMetric];
+    dot.setAttribute("cx", x(best.t)); dot.setAttribute("cy", y(bv)); dot.setAttribute("fill", colorOf(bv)); dot.setAttribute("visibility", "visible");
+    const dir = !M.zero ? "" : bv > 0 ? " · charging" : bv < 0 ? " · discharging" : " · idle";
+    showTip(tip, box, e, `${new Date(best.t).toLocaleTimeString()}<br><b>${Math.abs(bv).toFixed(M.dp)} ${M.unit}</b>${dir}`);
+  });
+  hit.addEventListener("pointerleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); });
+
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+  document.getElementById("trendStat").textContent =
+    `min ${Math.min(...vals).toFixed(M.dp)} · avg ${avg.toFixed(M.dp)} · max ${Math.max(...vals).toFixed(M.dp)} ${M.unit} · ${pts.length} samples`;
+}
+function makeTip(box) { const t = document.createElement("div"); t.className = "tip"; box.appendChild(t); return t; }
+function showTip(tip, box, e, html) {
+  tip.innerHTML = html; tip.style.display = "block";
+  const r = box.getBoundingClientRect();
+  let left = e.clientX - r.left + 12;
+  if (left + tip.offsetWidth > r.width) left = e.clientX - r.left - tip.offsetWidth - 12;
+  tip.style.left = left + "px"; tip.style.top = (e.clientY - r.top - tip.offsetHeight - 8) + "px";
+}
+
+/* ---------- history (history.db via serve.js, one row per 30 minutes) ---------- */
+const HB = 30 * 60 * 1000;
+const H = { range: "day", anchor: new Date(), metric: "soc", rows: [], from: 0, to: 0, error: "" };
+const HMET = {
+  soc: { title: "State of charge (%)", avg: "soc_avg", lo: "soc_min", hi: "soc_max", dp: 0, unit: "%" },
+  voltage: { title: "Pack voltage (V)", avg: "v_avg", lo: "v_min", hi: "v_max", dp: 2, unit: "V" },
+  current: { title: "Current (A)", avg: "i_avg", lo: "i_min", hi: "i_max", dp: 1, unit: "A", zero: true },
+  temp: { title: "Max temperature (°C)", avg: "temp_max", dp: 1, unit: "°C" },
+};
+const dayStart = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+function histBounds() {
+  const a = new Date(H.anchor);
+  if (H.range === "day") { const f = dayStart(a); return [f, addDays(f, 1)]; }
+  if (H.range === "week") { const f = addDays(dayStart(a), -((a.getDay() + 6) % 7)); return [f, addDays(f, 7)]; }   // Monday-based
+  return [new Date(a.getFullYear(), a.getMonth(), 1), new Date(a.getFullYear(), a.getMonth() + 1, 1)];
+}
+function histShift(dir) {
+  const a = new Date(H.anchor);
+  if (H.range === "day") H.anchor = addDays(a, dir);
+  else if (H.range === "week") H.anchor = addDays(a, 7 * dir);
+  else H.anchor = new Date(a.getFullYear(), a.getMonth() + dir, 1);
+  loadHistory();
+}
+function histLabel(from, to) {
+  const o = { month: "short", day: "numeric" };
+  if (H.range === "day") return from.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  if (H.range === "week") return `${from.toLocaleDateString([], o)} – ${addDays(to, -1).toLocaleDateString([], o)}, ${from.getFullYear()}`;
+  return from.toLocaleDateString([], { month: "long", year: "numeric" });
+}
+async function loadHistory() {
+  const [from, to] = histBounds();
+  H.from = +from; H.to = +to;
+  document.getElementById("histLabel").textContent = histLabel(from, to);
+  document.getElementById("histNext").disabled = H.to > Date.now();
+  try {
+    const r = await fetch(`/api/history?from=${H.from}&to=${H.to}`, { cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+    if (H.from !== +from) return;   // user moved on while this was loading
+    H.rows = j.rows || []; H.error = "";
+  } catch (e) { H.rows = []; H.error = e.message; }
+  renderHistory();
+}
+// x-axis labels: every 3 h for a day; one per day (at noon, centred under the day) for week/month.
+function histTicks() {
+  const out = [];
+  if (H.range === "day") {
+    for (let h = 0; h < 24; h += 3) { const d = new Date(H.from); d.setHours(h); out.push({ t: +d, s: d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }); }
+  } else {
+    for (let d = new Date(H.from); +d < H.to; d = addDays(d, 1)) {
+      const day = d.getDate();
+      if (H.range === "month" && !(day === 1 || day % 5 === 0)) continue;
+      const noon = new Date(d); noon.setHours(12);
+      out.push({ t: +noon, s: H.range === "week" ? d.toLocaleDateString([], { weekday: "short", day: "numeric" }) : d.toLocaleDateString([], { month: "short", day: "numeric" }) });
+    }
+  }
+  return out;
+}
+const fmtE = (wh) => Math.abs(wh) >= 1000 ? `${(wh / 1000).toFixed(2)} kWh` : `${wh.toFixed(0)} Wh`;
+function histWhen(t0, t1) {
+  const hm = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (t1 - t0 > HB) return new Date(t0).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  return (H.range === "day" ? "" : new Date(t0).toLocaleDateString([], { month: "short", day: "numeric" }) + " ") + `${hm(t0)}–${hm(t1)}`;
+}
+
+function renderHistory() {
+  const rows = H.rows, M = HMET[H.metric];
+  document.getElementById("histCsv").disabled = !rows.length;
+  document.getElementById("histLineTitle").textContent = M.title;
+  const empty = (msg) => ['histEnergy', 'histLine'].forEach((id) => (document.getElementById(id).innerHTML = `<div class="sub" style="padding:40px 0">${msg}</div>`));
+  const sumEl = document.getElementById("histSum");
+  if (!rows.length) {
+    sumEl.innerHTML = "";
+    empty(H.error ? "Could not load history: " + H.error
+      : "No history for this period. A summary is saved every 30 minutes while the dashboard is connected to the battery (demo data is not saved).");
+    return;
+  }
+
+  // Summary tiles
+  const sum = (k) => rows.reduce((a, r) => a + (r[k] || 0), 0);
+  const mn = (k) => { const v = rows.map((r) => r[k]).filter((x) => x != null); return v.length ? Math.min(...v) : null; };
+  const mx = (k) => { const v = rows.map((r) => r[k]).filter((x) => x != null); return v.length ? Math.max(...v) : null; };
+  const inWh = sum("in_wh"), outWh = sum("out_wh"), inAh = sum("in_ah"), outAh = sum("out_ah");
+  const slots = Math.round((Math.min(H.to, Date.now()) - H.from) / HB);
+  const tiles = [
+    ["Charged in", fmtE(inWh), `${inAh.toFixed(1)} Ah`],
+    ["Discharged out", fmtE(outWh), `${outAh.toFixed(1)} Ah`],
+    ["Net", (inWh - outWh >= 0 ? "+" : "−") + fmtE(Math.abs(inWh - outWh)), (inAh - outAh >= 0 ? "+" : "−") + Math.abs(inAh - outAh).toFixed(1) + " Ah"],
+    ["SOC range", mn("soc_min") != null ? `${fmt(mn("soc_min"), 0)}–${fmt(mx("soc_max"), 0)} %` : "--", ""],
+    ["Voltage range", mn("v_min") != null ? `${fmt(mn("v_min"), 2)}–${fmt(mx("v_max"), 2)} V` : "--", ""],
+    ["Max temperature", mx("temp_max") != null ? `${fmt(mx("temp_max"), 1)} °C` : "--", mx("cell_delta") != null ? `max cell Δ ${fmt(mx("cell_delta"), 0)} mV` : ""],
+    ["Recorded", `${rows.length} × 30 min`, slots > 0 ? `${Math.min(100, Math.round(rows.length / slots * 100))} % of the period so far` : ""],
+  ];
+  sumEl.innerHTML = tiles.map(([n, v, s]) => `<div class="t"><div class="n">${n}</div><div class="v">${v}</div><div class="s">${s || "&nbsp;"}</div></div>`).join("");
+
+  // Energy bins: 30-minute bars for a day, daily bars for week/month.
+  const bins = [];
+  if (H.range === "day") for (let t = H.from; t < H.to; t += HB) bins.push({ t0: t, t1: t + HB });
+  else for (let d = new Date(H.from); +d < H.to; d = addDays(d, 1)) bins.push({ t0: +d, t1: +addDays(d, 1) });
+  bins.forEach((b) => Object.assign(b, { inWh: 0, outWh: 0, inAh: 0, outAh: 0 }));
+  let bi = 0;
+  for (const r of rows) {
+    while (bi < bins.length - 1 && r.t >= bins[bi].t1) bi++;
+    const b = bins[bi];
+    if (r.t < b.t0 || r.t >= b.t1) continue;
+    b.inWh += r.in_wh || 0; b.outWh += r.out_wh || 0; b.inAh += r.in_ah || 0; b.outAh += r.out_ah || 0;
+  }
+  document.getElementById("histEnergyTitle").textContent = `Energy in / out per ${H.range === "day" ? "30 min" : "day"} (Wh)`;
+  renderEnergyChart(bins);
+  renderHistLine(rows, M);
+}
+
+function histFrame(box, lo, hi, label) {
+  const W = 560, Ht = 220, m = { l: 48, r: 10, t: 10, b: 24 };
+  const ticks = niceTicks(lo, hi, 4), y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const x = (t) => m.l + (W - m.l - m.r) * ((t - H.from) / (H.to - H.from));
+  const y = (v) => m.t + (Ht - m.t - m.b) * (1 - (v - y0) / (y1 - y0));
+  box.innerHTML = "";
+  const svg = el("svg", { viewBox: `0 0 ${W} ${Ht}`, role: "img", "aria-label": label }, box);
+  const ax = el("g", { class: "axis" }, svg);
+  const span = Math.abs(y1 - y0);
+  ticks.forEach((t) => {
+    el("line", { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), stroke: t === 0 && lo < 0 ? "var(--text-muted)" : "var(--grid)" }, ax);
+    el("text", { x: m.l - 6, y: y(t) + 4, "text-anchor": "end" }, ax).textContent = t.toFixed(span < 5 ? 2 : 0);
+  });
+  histTicks().forEach(({ t, s }) => (el("text", { x: x(t), y: Ht - 6, "text-anchor": "middle" }, ax).textContent = s));
+  return { svg, W, Ht, m, x, y, y0 };
+}
+
+function renderEnergyChart(bins) {
+  const box = document.getElementById("histEnergy");
+  const hi = Math.max(1, ...bins.map((b) => b.inWh)), lo = -Math.max(1, ...bins.map((b) => b.outWh));
+  const { svg, W, Ht, m, x, y } = histFrame(box, lo, hi, "Energy charged in and discharged out");
+  const zero = y(0), tip = makeTip(box);
+  bins.forEach((b) => {
+    const x0 = x(b.t0), w = x(b.t1) - x0, bw = Math.max(1, w * 0.72), bx = x0 + (w - bw) / 2;
+    if (b.inWh > 0) el("rect", { x: bx, y: y(b.inWh), width: bw, height: Math.max(1, zero - y(b.inWh)), rx: Math.min(2, bw / 2), fill: "var(--charge)" }, svg);
+    if (b.outWh > 0) el("rect", { x: bx, y: zero, width: bw, height: Math.max(1, y(-b.outWh) - zero), rx: Math.min(2, bw / 2), fill: "var(--discharge)" }, svg);
+    const hit = el("rect", { x: x0, y: m.t, width: w, height: Ht - m.t - m.b, fill: "transparent" }, svg);
+    hit.addEventListener("pointermove", (e) => showTip(tip, box, e,
+      `<b>${histWhen(b.t0, b.t1)}</b><br>In: ${fmtE(b.inWh)} · ${b.inAh.toFixed(1)} Ah<br>Out: ${fmtE(b.outWh)} · ${b.outAh.toFixed(1)} Ah`));
+    hit.addEventListener("pointerleave", () => (tip.style.display = "none"));
+  });
+}
+
+function renderHistLine(rows, M) {
+  const box = document.getElementById("histLine");
+  const pts = rows.filter((r) => r[M.avg] != null);
+  if (!pts.length) { box.innerHTML = '<div class="sub" style="padding:40px 0">No data for this metric.</div>'; return; }
+  const all = pts.flatMap((r) => [r[M.avg], M.lo ? r[M.lo] : null, M.hi ? r[M.hi] : null]).filter((v) => v != null);
+  let lo = Math.min(...all), hi = Math.max(...all);
+  if (M.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  if (H.metric === "soc") { lo = Math.max(0, lo); hi = Math.min(100, Math.max(hi, lo + 1)); }
+  const { svg, W, Ht, m, x, y } = histFrame(box, lo, hi, M.title + " history");
+  // Split into runs of consecutive half hours so gaps (battery not connected) show as gaps.
+  const runs = [];
+  pts.forEach((r, i) => { if (!i || r.t - pts[i - 1].t > HB) runs.push([]); runs[runs.length - 1].push(r); });
+  const cx = (r) => x(r.t + HB / 2);
+  for (const run of runs) {
+    if (M.lo && M.hi && run.every((r) => r[M.lo] != null && r[M.hi] != null)) {
+      const top = run.map((r) => `${cx(r).toFixed(1)},${y(r[M.hi]).toFixed(1)}`), bot = run.slice().reverse().map((r) => `${cx(r).toFixed(1)},${y(r[M.lo]).toFixed(1)}`);
+      if (run.length > 1) el("path", { d: `M${top.join("L")}L${bot.join("L")}Z`, fill: "var(--series-1-soft)" }, svg);
+    }
+    if (run.length === 1) el("circle", { cx: cx(run[0]), cy: y(run[0][M.avg]), r: 2.5, fill: "var(--series-1)" }, svg);
+    else el("path", { d: run.map((r, i) => `${i ? "L" : "M"}${cx(r).toFixed(1)},${y(r[M.avg]).toFixed(1)}`).join(""), fill: "none", stroke: "var(--series-1)", "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+  }
+  const cross = el("line", { y1: m.t, y2: Ht - m.b, stroke: "var(--text-muted)", "stroke-dasharray": "3 3", visibility: "hidden" }, svg);
+  const dot = el("circle", { r: 4, fill: "var(--series-1)", stroke: "var(--surface-1)", "stroke-width": 2, visibility: "hidden" }, svg);
+  const tip = makeTip(box);
+  const hit = el("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: Ht - m.t - m.b, fill: "transparent" }, svg);
+  hit.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect(), sx = (e.clientX - r.left) * (W / r.width);
+    const tt = H.from + ((sx - m.l) / (W - m.l - m.r)) * (H.to - H.from);
+    let best = pts[0]; for (const p of pts) if (Math.abs(p.t + HB / 2 - tt) < Math.abs(best.t + HB / 2 - tt)) best = p;
+    cross.setAttribute("x1", cx(best)); cross.setAttribute("x2", cx(best)); cross.setAttribute("visibility", "visible");
+    dot.setAttribute("cx", cx(best)); dot.setAttribute("cy", y(best[M.avg])); dot.setAttribute("visibility", "visible");
+    const range = M.lo && best[M.lo] != null ? `<br>min ${best[M.lo].toFixed(M.dp)} · max ${best[M.hi].toFixed(M.dp)} ${M.unit}` : "";
+    showTip(tip, box, e, `${histWhen(best.t, best.t + HB)}<br><b>${best[M.avg].toFixed(M.dp)} ${M.unit}</b>${M.lo ? " avg" : ""}${range}`);
+  });
+  hit.addEventListener("pointerleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); });
+}
+
+function exportHistoryCsv() {
+  const cols = ["t", "samples", "v_avg", "v_min", "v_max", "i_avg", "i_min", "i_max", "p_avg", "soc_avg", "soc_min", "soc_max", "soc_end", "temp_max", "cell_delta", "in_ah", "in_wh", "out_ah", "out_wh"];
+  const num = (v) => v == null ? "" : typeof v === "number" ? +v.toFixed(4) : v;
+  const lines = [["period_start", ...cols.slice(1)].join(",")]
+    .concat(H.rows.map((r) => [new Date(r.t).toISOString(), ...cols.slice(1).map((c) => num(r[c]))].join(",")));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+  a.download = `wattcycle-history-${H.range}-${new Date(H.from).toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* ---------- CSV export ---------- */
+function exportCsv() {
+  const rows = [["time", "voltage_V", "current_A", "power_W", "soc_pct"]]
+    .concat(S.history.map((p) => [new Date(p.t).toISOString(), p.voltage, p.current, p.power?.toFixed(1), p.soc]));
+  const blob = new Blob([rows.map((r) => r.join(",")).join("\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `wattcycle-${new Date().toISOString().slice(0, 19).replace(/:/g, "")}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* ---------- wiring ---------- */
+document.getElementById("btnConnect").onclick = () => (S.device?.gatt.connected ? disconnect() : connect());
+document.getElementById("btnDemo").onclick = () => (S.demo ? (stopDemo(), setConn("", "Idle")) : startDemo());
+document.getElementById("btnCsv").onclick = exportCsv;
+document.getElementById("btnResetTotals").onclick = resetTotals;
+document.querySelectorAll("#histRange button").forEach((b) => b.onclick = () => {
+  H.range = b.dataset.r;
+  document.querySelectorAll("#histRange button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  loadHistory();
+});
+document.querySelectorAll("#histMetric button").forEach((b) => b.onclick = () => {
+  H.metric = b.dataset.h;
+  document.querySelectorAll("#histMetric button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  renderHistory();
+});
+document.getElementById("histPrev").onclick = () => histShift(-1);
+document.getElementById("histNext").onclick = () => histShift(1);
+document.getElementById("histToday").onclick = () => { H.anchor = new Date(); loadHistory(); };
+document.getElementById("histCsv").onclick = exportHistoryCsv;
+loadHistory();
+// Refresh the history while it shows the current period (the half hour in progress updates live).
+setInterval(() => { if (H.to > Date.now() && !document.hidden) loadHistory(); }, 60000);
+document.getElementById("interval").onchange = () => {
+  saveConfig({ interval: +document.getElementById("interval").value });
+  if (S.polling) startPolling();
+  if (S.demo) { stopDemo(); startDemo(); }
+};
+document.getElementById("allDevices").onchange = (e) => saveConfig({ allDevices: e.target.checked });
+document.getElementById("autoConnect").onchange = (e) => {
+  saveConfig({ autoConnect: e.target.checked });
+  if (e.target.checked) autoConnect(); else { clearTimeout(autoTimer); autoTries = 0; }
+};
+document.querySelectorAll("#trendTabs button").forEach((b) => b.onclick = () => {
+  trendMetric = b.dataset.m;
+  document.querySelectorAll("#trendTabs button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  saveConfig({ trendMetric });
+  renderTrend();
+});
+render();
+fetch("/api/session", { cache: "no-store" }).then((r) => r.json()).catch(() => ({ role: "local" })).then(async ({ role }) => {
+  ROLE = role === "remote" ? "remote" : "local";
+  if (ROLE === "remote") return startViewer();
+  await loadConfig();
+  render();
+  // Keep this window alive for remote viewers: a held Web Lock stops Chrome/Edge from freezing the page,
+  // and the heartbeat lets viewers tell "window paused/closed" apart from "battery not answering".
+  navigator.locks?.request("wattcycle-keepalive", () => new Promise(() => {})).catch(() => {});
+  setInterval(() => relay({ hb: 1 }), 10000);
+  relay({ device: document.getElementById("devname").textContent, conn: { state: "", text: "Idle" } });
+  if (!navigator.bluetooth) notice("Web Bluetooth is not available in this browser. Use <b>Chrome</b> or <b>Edge</b> and open the page from <code>http://localhost</code>. You can still try <b>Demo data</b>.");
+  else autoConnect();
+});
+</script>
+</body>
+</html>
