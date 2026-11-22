@@ -345,11 +345,14 @@ function setConn(state, text) {
 let ROLE = "local";
 // No `keepalive: true` here: the browser caps keepalive requests at ~64 KB in flight per page and the quota
 // leaked, so after a few hundred readings every relay was silently rejected.
+// The response body MUST be read: an unread body keeps its data pipe (an OS handle) open in the renderer.
+// At one relay every 2 s that leaked ~2,000 handles an hour, and after a few hours the window went blank.
 let relayFailing = false;
 function relay(msg) {
   if (ROLE !== "local") return;
   fetch("/api/data", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg) })
-    .then((r) => {
+    .then(async (r) => {
+      await r.arrayBuffer().catch(() => {});   // drain and release the body
       if (!r.ok) throw new Error("HTTP " + r.status);
       if (relayFailing) { relayFailing = false; log("Relay to server working again"); }
     })

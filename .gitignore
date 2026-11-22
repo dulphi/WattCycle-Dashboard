@@ -1,0 +1,7 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs/Wattcyle-Dashboard.slnx/FileContentIndex
+/.vs/slnx.sqlite
+/.vs/Wattcyle-Dashboard.slnx/config/applicationhost.config
